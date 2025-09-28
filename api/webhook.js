@@ -100,9 +100,18 @@ async function sendToSymbol(uid, msg) {
   const signature = signer.signTransaction(tx);
   let payloadHex  = facade.transactionFactory.static.attachSignature(tx, signature);
 
-  // attachSignature が { payload: "...hex..." } を返す場合に対応
+  // attachSignature の戻り値を正規化
   if (typeof payloadHex === 'object' && payloadHex.payload) {
+    // オブジェクト形式 { payload: "...hex..." }
     payloadHex = payloadHex.payload;
+  } else if (typeof payloadHex === 'string' && payloadHex.startsWith('{')) {
+    // JSON文字列形式 '{"payload":"..."}'
+    try {
+      const parsed = JSON.parse(payloadHex);
+      if (parsed.payload) payloadHex = parsed.payload;
+    } catch (e) {
+      console.error('❌ payload JSON.parse failed:', e);
+    }
   }
 
   const hash = facade.hashTransaction(tx).toString();
