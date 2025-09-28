@@ -134,7 +134,7 @@ async function sendToSymbol(uid, msg) {
     console.log('📡 announce body (JSON head):', announceBody.slice(0, 120) + '...');
 
 
-    res = await fetch(`http://45.14.194.160:8080/transactions`, {
+    res = await fetch(`http://45.14.194.160:8080/announce`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: announceBody,
