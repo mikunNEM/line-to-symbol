@@ -136,7 +136,7 @@ async function sendToSymbol(uid, msg) {
 
 // announce 部分
 
-const res = await fetch("http://45.14.194.160/announce", {
+const res = await fetch("https://relay.symbol-mikun.net/announce", {
   method: "POST",
   headers: { "Content-Type": "application/json" },
   body: JSON.stringify({ payload: payloadHex }),
