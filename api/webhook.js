@@ -7,10 +7,10 @@ import { PrivateKey } from 'symbol-sdk';
 import { SymbolFacade, descriptors, models } from 'symbol-sdk/symbol';
 
 // ===== env =====
-const NETWORK = process.env.NETWORK_TYPE || 'testnet';          // 'testnet' | 'mainnet'
-const NODE_URL = process.env.NODE_URL;                           // 例: https://symbol-test.opening-line.jp:3001
+const NETWORK     = process.env.NETWORK_TYPE || 'testnet';          // 'testnet' | 'mainnet'
+const NODE_URL    = process.env.NODE_URL;                           // 例: https://symbol-test.opening-line.jp:3001
 const LINE_SECRET = process.env.LINE_CHANNEL_SECRET;
-const LINE_TOKEN = process.env.LINE_ACCESS_TOKEN;
+const LINE_TOKEN  = process.env.LINE_ACCESS_TOKEN;
 const PRIVATE_KEY = process.env.SYMBOL_PRIVATE_KEY;
 
 // XYM mosaicId
@@ -23,9 +23,9 @@ const facade = new SymbolFacade(NETWORK);
 
 function ensureEnv() {
   const missing = [];
-  if (!NODE_URL) missing.push('NODE_URL');
+  if (!NODE_URL)    missing.push('NODE_URL');
   if (!LINE_SECRET) missing.push('LINE_CHANNEL_SECRET');
-  if (!LINE_TOKEN) missing.push('LINE_ACCESS_TOKEN');
+  if (!LINE_TOKEN)  missing.push('LINE_ACCESS_TOKEN');
   if (!PRIVATE_KEY) missing.push('SYMBOL_PRIVATE_KEY');
   if (missing.length) throw new Error(`Missing env: ${missing.join(', ')}`);
 }
@@ -63,7 +63,7 @@ async function sendToSymbol(uid, msg) {
   ensureEnv();
 
   // 署名者
-  const signer = facade.createAccount(new PrivateKey(PRIVATE_KEY));
+  const signer    = facade.createAccount(new PrivateKey(PRIVATE_KEY));
   const myAddress = facade.network.publicKeyToAddress(signer.publicKey);
 
   // メッセージ整形（過長防止）
@@ -98,14 +98,12 @@ async function sendToSymbol(uid, msg) {
 
   // 署名→payload→hash
   const signature = signer.signTransaction(tx);
-  let payloadHex = facade.transactionFactory.static.attachSignature(tx, signature);
+  let payloadHex  = facade.transactionFactory.static.attachSignature(tx, signature);
 
   // attachSignature の戻り値を正規化
   if (typeof payloadHex === 'object' && payloadHex.payload) {
-    // オブジェクト形式 { payload: "...hex..." }
     payloadHex = payloadHex.payload;
   } else if (typeof payloadHex === 'string' && payloadHex.startsWith('{')) {
-    // JSON文字列形式 '{"payload":"..."}'
     try {
       const parsed = JSON.parse(payloadHex);
       if (parsed.payload) payloadHex = parsed.payload;
@@ -114,14 +112,11 @@ async function sendToSymbol(uid, msg) {
     }
   }
 
-  console.log('📦 payload full:', payloadHex);
-
-
   const hash = facade.hashTransaction(tx).toString();
 
   console.log('🔑 tx hash:', hash);
   console.log('📦 payload final type:', typeof payloadHex, 'len:', payloadHex?.length);
-  console.log('📦 payload head:', payloadHex?.slice(0, 64) + '...');
+  console.log('📦 payload head (hex):', payloadHex?.slice(0, 64) + '...');
   console.log('🌐 announce to:', `${NODE_URL}/transactions`);
 
   // announce（8秒タイムアウト & 詳細ログ）
@@ -134,13 +129,16 @@ async function sendToSymbol(uid, msg) {
       controller.abort();
     }, 8000);
 
+    // ✅ application/json + JSON.stringify({ payload })
+    const announceBody = JSON.stringify({ payload: payloadHex });
+    console.log('📡 announce body (JSON head):', announceBody.slice(0, 120) + '...');
+
     res = await fetch(`${NODE_URL}/transactions`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ payload: payloadHex }),
+      body: announceBody,
       signal: controller.signal
     });
-
 
     clearTimeout(timeout);
 
@@ -199,7 +197,7 @@ export default async function handler(req, res) {
   try {
     const preview = raw.toString('utf8').slice(0, 256);
     console.log('✅ LINE Webhook received, raw preview:', preview);
-  } catch { }
+  } catch {}
 
   // 先にACK（LINEの3秒制限対策）
   res.status(200).end('ok');
