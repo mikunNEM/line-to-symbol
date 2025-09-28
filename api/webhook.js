@@ -114,6 +114,9 @@ async function sendToSymbol(uid, msg) {
     }
   }
 
+  console.log('📦 payload full:', payloadHex);
+
+
   const hash = facade.hashTransaction(tx).toString();
 
   console.log('🔑 tx hash:', hash);
