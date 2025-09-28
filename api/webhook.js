@@ -135,7 +135,7 @@ async function sendToSymbol(uid, msg) {
 
 
 try {
-  const r = await fetch("https://testnet1.symbol-mikun.net:3001/node/health");
+  const r = await fetch("https://mainnet.dusanjp.com:3004/nodes");
   console.log("status:", r.status);
   console.log("text:", await r.text());
 } catch (e) {
