@@ -103,8 +103,6 @@ async function sendToSymbol(uid, msg) {
   const hash      = facade.hashTransaction(tx).toString();
   const payloadLen = typeof payload === 'string' ? payload.length : JSON.stringify(payload).length;
 
-  console.log('Signed Tx hash:', facade.hashTransaction(tx).toString());
-
   console.log('🔑 tx hash:', hash);
   console.log('📦 payload length:', payloadLen);
   console.log('🌐 announce to:', `${NODE_URL}/transactions`);
@@ -112,6 +110,7 @@ async function sendToSymbol(uid, msg) {
   // announce（8秒タイムアウト & 詳細ログ）
   let res, text;
   try {
+    console .log('📡 導通チェック...');
     res = await fetch(`${NODE_URL}/transactions`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
@@ -120,6 +119,7 @@ async function sendToSymbol(uid, msg) {
       signal: AbortSignal.timeout(8000)
     });
     text = await res.text();
+    console .log('📡 導通チェック２' ,text);
   } catch (err) {
     console.error('🌩 announce fetch error:', err);
     throw new Error(`fetch-failed: ${err.message || String(err)}`);
