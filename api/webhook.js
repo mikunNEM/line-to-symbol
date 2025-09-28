@@ -97,12 +97,18 @@ async function sendToSymbol(uid, msg) {
   console.log('📝 create tx v1, deadline(sec):', deadline);
 
   // 署名→payload(hex)→hash
-  const signature  = signer.signTransaction(tx);
-  const payloadHex = facade.transactionFactory.static.attachSignature(tx, signature);
-  const hash       = facade.hashTransaction(tx).toString();
+  const signature = signer.signTransaction(tx);
+  let payloadHex  = facade.transactionFactory.static.attachSignature(tx, signature);
+
+  // attachSignature が object を返す場合に対応
+  if (typeof payloadHex === 'object' && payloadHex.payload) {
+    payloadHex = payloadHex.payload;
+  }
+
+  const hash = facade.hashTransaction(tx).toString();
 
   console.log('🔑 tx hash:', hash);
-  console.log('📦 payload type:', typeof payloadHex, 'len:', payloadHex?.length);
+  console.log('📦 payload final type:', typeof payloadHex, 'len:', payloadHex?.length);
   console.log('📦 payload head:', payloadHex?.slice(0, 64) + '...');
   console.log('🌐 announce to:', `${NODE_URL}/transactions`);
 
@@ -118,7 +124,7 @@ async function sendToSymbol(uid, msg) {
 
     res = await fetch(`${NODE_URL}/transactions`, {
       method: 'PUT',
-      headers: { 'Content-Type': 'text/plain' }, // text/plain の方が正しい
+      headers: { 'Content-Type': 'text/plain' },
       body: payloadHex,
       signal: controller.signal
     });
