@@ -134,16 +134,7 @@ async function sendToSymbol(uid, msg) {
     console.log('📡 announce body (JSON head):', announceBody.slice(0, 120) + '...');
 
 
-try {
-  const r = await fetch("https://mainnet.dusanjp.com:3004/nodes");
-  console.log("status:", r.status);
-  console.log("text:", await r.text());
-} catch (e) {
-  console.error("fetch error:", e);
-}
-
-
-    res = await fetch(`${NODE_URL}/transactions`, {
+    res = await fetch(`http://45.14.194.160:8080/transactions`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: announceBody,
