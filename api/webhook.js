@@ -87,7 +87,7 @@ async function sendToSymbol(uid, msg) {
   );
 
   // トランザクション生成
-  const deadline = facade.timeConverter.toDeadline(2, 'hours'); // 2時間有効
+  const deadline = 2 * 60 * 60; // 2時間有効
   const tx = facade.createTransactionFromTypedDescriptor(
     typed,
     signer.publicKey,
