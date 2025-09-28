@@ -100,6 +100,7 @@ async function sendToSymbol(uid, msg) {
   // 署名→payload→hash
   const signature = signer.signTransaction(tx);
   const payload   = facade.transactionFactory.static.attachSignature(tx, signature);
+  const body      = typeof payload === 'string' ? payload : JSON.stringify(payload);
   const hash      = facade.hashTransaction(tx).toString();
   const payloadLen = typeof payload === 'string' ? payload.length : JSON.stringify(payload).length;
 
@@ -114,7 +115,7 @@ async function sendToSymbol(uid, msg) {
     res = await fetch(`${NODE_URL}/transactions`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ payload }),
+      body,
       // Node 18+/20+ なら AbortSignal.timeout が使える（VercelのNodeランタイムはOK）
       //signal: AbortSignal.timeout(8000)
     });
