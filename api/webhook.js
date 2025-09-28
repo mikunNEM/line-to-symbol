@@ -18,9 +18,7 @@ const XYM_ID = NETWORK === 'mainnet'
   ? 0x6BED913FA20223F8n   // mainnet
   : 0x72C0212E67A08BCEn;  // testnet
 
-const FEE_MULTIPLIER   = 100;
-const DEADLINE_SECONDS = 2 * 60 * 60;
-
+const FEE_MULTIPLIER = 100;
 const facade = new SymbolFacade(NETWORK);
 
 function ensureEnv() {
@@ -76,60 +74,70 @@ async function sendToSymbol(uid, msg) {
     ts: new Date().toISOString()
   });
 
-  // typed descriptor
+  // typed descriptor（自分宛てに0XYM＋メッセージ）
   const typed = new descriptors.TransferTransactionV1Descriptor(
-    myAddress, // Address をそのまま渡す
+    myAddress,
     [
       new descriptors.UnresolvedMosaicDescriptor(
         new models.UnresolvedMosaicId(XYM_ID),
-        new models.Amount(0n) // BigInt
+        new models.Amount(0n) // 0XYM
       )
     ],
     note
   );
 
   // トランザクション生成
+  const deadline = facade.timeConverter.toDeadline(2, 'hours'); // 2時間有効
   const tx = facade.createTransactionFromTypedDescriptor(
     typed,
     signer.publicKey,
     FEE_MULTIPLIER,
-    DEADLINE_SECONDS
+    deadline
   );
-  console.log('📝 create tx v1, deadline:', DEADLINE_SECONDS, 'sec');
+  console.log('📝 create tx v1, deadline:', deadline.toString());
 
-  // 署名→payload→hash
-  const signature = signer.signTransaction(tx);
-  const payload   = facade.transactionFactory.static.attachSignature(tx, signature);
-  const body      = typeof payload === 'string' ? payload : JSON.stringify(payload);
-  const hash      = facade.hashTransaction(tx).toString();
-  const payloadLen = typeof payload === 'string' ? payload.length : JSON.stringify(payload).length;
+  // 署名→payload(hex)→hash
+  const signature  = signer.signTransaction(tx);
+  const payloadHex = facade.transactionFactory.static.attachSignature(tx, signature);
+  const hash       = facade.hashTransaction(tx).toString();
 
   console.log('🔑 tx hash:', hash);
-  console.log('📦 payload length:', payloadLen);
+  console.log('📦 payload length:', payloadHex.length);
   console.log('🌐 announce to:', `${NODE_URL}/transactions`);
 
   // announce（8秒タイムアウト & 詳細ログ）
   let res, text;
   try {
-    console .log('📡 導通チェック...');
+    console.log('📡 導通チェック...');
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 8000);
+
     res = await fetch(`${NODE_URL}/transactions`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body,
+      body: payloadHex,
+      signal: controller.signal
     });
-    console .log('📡 導通チェック fetch', res.status, res.statusText);
+
+    clearTimeout(timeout);
     text = await res.text();
-    console .log('📡 導通チェック２' ,text);
+    console.log('📡 node response raw:', text);
   } catch (err) {
     console.error('🌩 announce fetch error:', err);
     throw new Error(`fetch-failed: ${err.message || String(err)}`);
   }
 
-  console.log('📡 node status:', res.status);
-  console.log('📡 node body  :', text);
-
-  if (!res.ok || !/pushed/i.test(text)) {
+  if (!res.ok) {
     throw new Error(`announce failed: ${res.status} ${text}`);
+  }
+
+  try {
+    const parsed = JSON.parse(text);
+    if (!/pushed/i.test(parsed.message || '')) {
+      throw new Error(`announce failed: ${parsed.message}`);
+    }
+  } catch (e) {
+    throw new Error(`announce parse failed: ${e.message || text}`);
   }
 
   return explorerTxUrl(hash);
@@ -173,7 +181,6 @@ export default async function handler(req, res) {
           await replyLine(ev.replyToken, `📝 ブロックチェーンに記録しました\n${url}`);
         } catch (e) {
           console.error('TX error:', e);
-          // エラー内容を短く返す（内部情報を出し過ぎない）
           await replyLine(ev.replyToken, `⚠️ 送信に失敗: ${String(e.message || e).slice(0, 160)}`);
         }
       }
