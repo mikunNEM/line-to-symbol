@@ -66,6 +66,8 @@ async function sendToSymbol(uid, msg) {
     DEADLINE_SECONDS
   );
 
+  console.log("📝 create tx:", tx);
+
   // 署名→payload
   const signature = signer.signTransaction(tx);
   const payload   = facade.transactionFactory.static.attachSignature(tx, signature);
@@ -79,12 +81,15 @@ async function sendToSymbol(uid, msg) {
   });
   if (!res.ok) throw new Error(`announce failed: ${res.status} ${await res.text()}`);
 
+  console.log("✅ announced:", hash);
   return `https://testnet.symbol.fyi/transactions/${hash}`;
 }
 
 // --- webhook handler ---
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(200).send('ok');
+
+  console.log("✅ LINE Webhook received:", req.body);
 
   const raw = await getRawBody(req);
   const sig = req.headers['x-line-signature'];
