@@ -103,6 +103,8 @@ async function sendToSymbol(uid, msg) {
   const hash      = facade.hashTransaction(tx).toString();
   const payloadLen = typeof payload === 'string' ? payload.length : JSON.stringify(payload).length;
 
+  console.log('Signed Tx hash:', facade.hashTransaction(tx).toString());
+
   console.log('🔑 tx hash:', hash);
   console.log('📦 payload length:', payloadLen);
   console.log('🌐 announce to:', `${NODE_URL}/transactions`);
