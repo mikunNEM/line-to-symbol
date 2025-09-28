@@ -134,19 +134,21 @@ async function sendToSymbol(uid, msg) {
     console.log('📡 announce body (JSON head):', announceBody.slice(0, 120) + '...');
 
 
-    res = await fetch(`http://45.14.194.160/announce`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: announceBody,
-      signal: controller.signal
-    });
+// announce 部分
 
-    clearTimeout(timeout);
+const res = await fetch("http://45.14.194.160/announce", {
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({ payload: payloadHex }),
+  signal: controller.signal,
+});
 
-    if (!res) {
-      console.error('❌ fetch returned no response object');
-      throw new Error('no response');
-    }
+clearTimeout(timeout);
+
+if (!res.ok) throw new Error(`relay announce failed: ${res.status}`);
+const text = await res.text();
+console.log("relay response:", text);
+
 
     console.log('📡 fetch done. res.status:', res.status, res.statusText);
 
