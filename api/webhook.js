@@ -96,11 +96,11 @@ async function sendToSymbol(uid, msg) {
   );
   console.log('📝 create tx v1, deadline(sec):', deadline);
 
-  // 署名→payload(hex)→hash
+  // 署名→payload→hash
   const signature = signer.signTransaction(tx);
   let payloadHex  = facade.transactionFactory.static.attachSignature(tx, signature);
 
-  // attachSignature が object を返す場合に対応
+  // attachSignature が { payload: "...hex..." } を返す場合に対応
   if (typeof payloadHex === 'object' && payloadHex.payload) {
     payloadHex = payloadHex.payload;
   }
