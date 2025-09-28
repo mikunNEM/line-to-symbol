@@ -116,7 +116,7 @@ async function sendToSymbol(uid, msg) {
 
   console.log('🔑 tx hash:', hash);
   console.log('📦 payload final type:', typeof payloadHex, 'len:', payloadHex?.length);
-  console.log('📦 payload head (hex):', payloadHex?.slice(0, 64) + '...');
+  console.log('📦 payload head (hex):', payloadHex);
   console.log('🌐 announce to:', `${NODE_URL}/transactions`);
 
   // announce（8秒タイムアウト & 詳細ログ）
