@@ -19,7 +19,7 @@ const XYM_ID = NETWORK === 'mainnet'
   : 0x72C0212E67A08BCEn;  // testnet
 
 const FEE_MULTIPLIER   = 100;
-const DEADLINE_SECONDS = 5 * 60;
+const DEADLINE_SECONDS = 2 * 60 * 60;
 
 const facade = new SymbolFacade(NETWORK);
 
