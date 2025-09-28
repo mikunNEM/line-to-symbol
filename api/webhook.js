@@ -136,7 +136,7 @@ async function sendToSymbol(uid, msg) {
 
     res = await fetch(`${NODE_URL}/transactions`, {
       method: 'PUT',
-      headers: { 'Content-Type': 'text/plain' },
+      headers: { 'Content-Type': 'application/json' },
       body: payloadHex,
       signal: controller.signal
     });
