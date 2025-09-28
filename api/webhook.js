@@ -1,40 +1,32 @@
-// api/webhook.js  (Vercel Node.js 20)
-/**
- * 必要な環境変数（Vercel Project Settings → Environment Variables）
- * - NETWORK_TYPE = 'testnet'
- * - NODE_URL = 'https://symbol-test.opening-line.jp:3001' など
- * - LINE_CHANNEL_SECRET
- * - LINE_ACCESS_TOKEN
- * - SYMBOL_PRIVATE_KEY  (テストネット用 64hex)
- */
+// api/webhook.js
 import crypto from 'crypto';
 import { PrivateKey } from 'symbol-sdk';
-import {
-  SymbolFacade, Address, PublicKey
-} from 'symbol-sdk/symbol';
+import { SymbolFacade, Address, descriptors, models } from 'symbol-sdk/symbol';
 
-// ====== 設定 ======
+// ===== env =====
 const NETWORK = process.env.NETWORK_TYPE || 'testnet';
-const NODE_URL = process.env.NODE_URL;
+const NODE_URL = process.env.NODE_URL; // 例: https://symbol-test.opening-line.jp:3001
 const LINE_SECRET = process.env.LINE_CHANNEL_SECRET;
 const LINE_TOKEN  = process.env.LINE_ACCESS_TOKEN;
 const PRIVATE_KEY = process.env.SYMBOL_PRIVATE_KEY;
 
-// Testnet XYM MosaicId
+// Testnet XYM
 const XYM_ID = 0x72C0212E67A08BCEn;
+const FEE_MULTIPLIER = 100;
+const DEADLINE_SECONDS = 5 * 60;
 
 const facade = new SymbolFacade(NETWORK);
 
-// --- Vercel で生ボディを取得（署名検証用） ---
+// --- raw body for LINE signature ---
 async function getRawBody(req) {
   const chunks = [];
-  for await (const chunk of req) chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+  for await (const c of req) chunks.push(Buffer.isBuffer(c) ? c : Buffer.from(c));
   return Buffer.concat(chunks);
 }
 const verifyLine = (raw, sig) =>
   !!sig && crypto.createHmac('sha256', LINE_SECRET).update(raw).digest('base64') === sig;
 
-// --- LINEへ返信 ---
+// --- LINE reply ---
 async function replyLine(replyToken, text) {
   await fetch('https://api.line.me/v2/bot/message/reply', {
     method: 'POST',
@@ -43,46 +35,54 @@ async function replyLine(replyToken, text) {
   });
 }
 
-// --- Symbolへ送信（メッセージを刻む） ---
+// --- send Symbol tx using typed descriptor (v3流) ---
 async function sendToSymbol(uid, msg) {
-  const keyPair = new facade.static.KeyPair(new PrivateKey(PRIVATE_KEY));
-  const pubKey = keyPair.publicKey.toString();
-  const myAddress = facade.network.publicKeyToAddress(keyPair.publicKey).toString();
+  // 署名者（アカウント）作成 - v3 では createAccount が使える
+  const signer = facade.createAccount(new PrivateKey(PRIVATE_KEY));
+  const myAddress = facade.network.publicKeyToAddress(signer.publicKey);
 
-  // チェーンに載せるペイロード（短くする）
+  // なるべく短く整形（メッセージ過長でエラーを避ける）
   const note = JSON.stringify({
-    t: 'line',
-    uid: String(uid).slice(0, 16),
-    msg: String(msg).slice(0, 160),
-    ts: new Date().toISOString()
+    t: 'line', uid: String(uid).slice(0, 16), msg: String(msg).slice(0, 160), ts: new Date().toISOString()
   });
 
-  // object 記法で作成（BigInt を直接使用）
-  const tx = facade.transactionFactory.create({
-    type: 'transfer_transaction_v1',
-    signerPublicKey: pubKey,
-    fee: 1000000n, // 手数料調整は適宜
-    deadline: BigInt(Math.floor(Date.now() / 1000) + 5 * 60), // 5分
-    recipientAddress: myAddress, // 自分宛
-    mosaics: [{ mosaicId: XYM_ID, amount: 0n }],
-    message: note // プレーンメッセージ
-  });
+  // typed descriptor で定義（models.* を使うのがポイント。Amount/UnresolvedMosaicId はここから）
+  const typed = new descriptors.TransferTransactionV1Descriptor(
+    new Address(myAddress.toString()),
+    [
+      new descriptors.UnresolvedMosaicDescriptor(
+        new models.UnresolvedMosaicId(XYM_ID),
+        new models.Amount(0n) // BigInt
+      )
+    ],
+    note // プレーンメッセージ
+  );
 
-  const signature = facade.signTransaction(keyPair, tx);
-  const payload = facade.transactionFactory.static.attachSignature(tx, signature);
-  const hash = facade.hashTransaction(tx).toString();
+  // トランザクション生成
+  const tx = facade.createTransactionFromTypedDescriptor(
+    typed,
+    signer.publicKey,
+    FEE_MULTIPLIER,
+    DEADLINE_SECONDS
+  );
 
-  const r = await fetch(`${NODE_URL}/transactions`, {
+  // 署名→payload
+  const signature = signer.signTransaction(tx);
+  const payload   = facade.transactionFactory.static.attachSignature(tx, signature);
+  const hash      = facade.hashTransaction(tx).toString();
+
+  // announce
+  const res = await fetch(`${NODE_URL}/transactions`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ payload })
   });
-  if (!r.ok) throw new Error(`announce failed: ${r.status} ${await r.text()}`);
+  if (!res.ok) throw new Error(`announce failed: ${res.status} ${await res.text()}`);
 
   return `https://testnet.symbol.fyi/transactions/${hash}`;
 }
 
-// --- Webhook ハンドラ ---
+// --- webhook handler ---
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(200).send('ok');
 
@@ -105,6 +105,6 @@ export default async function handler(req, res) {
         }
       }
     }
-  } catch { /* 失敗は無視 */ }
+  } catch { /* 解析失敗は無視 */ }
 }
 
