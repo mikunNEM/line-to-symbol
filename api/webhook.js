@@ -8,7 +8,7 @@ import { SymbolFacade, descriptors, models } from 'symbol-sdk/symbol';
 
 // ===== env =====
 const NETWORK     = process.env.NETWORK_TYPE || 'testnet';          // 'testnet' | 'mainnet'
-const NODE_URL    = process.env.NODE_URL;                            // 例: https://symbol-test.opening-line.jp:3001
+const NODE_URL    = process.env.NODE_URL;                           // 例: https://symbol-test.opening-line.jp:3001
 const LINE_SECRET = process.env.LINE_CHANNEL_SECRET;
 const LINE_TOKEN  = process.env.LINE_ACCESS_TOKEN;
 const PRIVATE_KEY = process.env.SYMBOL_PRIVATE_KEY;
@@ -80,7 +80,7 @@ async function sendToSymbol(uid, msg) {
     [
       new descriptors.UnresolvedMosaicDescriptor(
         new models.UnresolvedMosaicId(XYM_ID),
-        new models.Amount(0n) // 0XYM
+        new models.Amount(0n)
       )
     ],
     note
@@ -94,7 +94,7 @@ async function sendToSymbol(uid, msg) {
     FEE_MULTIPLIER,
     deadline
   );
-  console.log('📝 create tx v1, deadline:', deadline.toString());
+  console.log('📝 create tx v1, deadline(sec):', deadline);
 
   // 署名→payload(hex)→hash
   const signature  = signer.signTransaction(tx);
@@ -102,26 +102,43 @@ async function sendToSymbol(uid, msg) {
   const hash       = facade.hashTransaction(tx).toString();
 
   console.log('🔑 tx hash:', hash);
-  console.log('📦 payload length:', payloadHex.length);
+  console.log('📦 payload type:', typeof payloadHex, 'len:', payloadHex?.length);
+  console.log('📦 payload head:', payloadHex?.slice(0, 64) + '...');
   console.log('🌐 announce to:', `${NODE_URL}/transactions`);
 
   // announce（8秒タイムアウト & 詳細ログ）
   let res, text;
   try {
-    console.log('📡 導通チェック...');
+    console.log('📡 fetch start...');
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 8000);
+    const timeout = setTimeout(() => {
+      console.error('⏰ fetch timeout (8s)');
+      controller.abort();
+    }, 8000);
 
     res = await fetch(`${NODE_URL}/transactions`, {
       method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'text/plain' }, // text/plain の方が正しい
       body: payloadHex,
       signal: controller.signal
     });
 
     clearTimeout(timeout);
-    text = await res.text();
-    console.log('📡 node response raw:', text);
+
+    if (!res) {
+      console.error('❌ fetch returned no response object');
+      throw new Error('no response');
+    }
+
+    console.log('📡 fetch done. res.status:', res.status, res.statusText);
+
+    try {
+      text = await res.text();
+      console.log('📡 raw response text:', text);
+    } catch (e) {
+      console.error('❌ res.text() failed:', e);
+    }
+
   } catch (err) {
     console.error('🌩 announce fetch error:', err);
     throw new Error(`fetch-failed: ${err.message || String(err)}`);
