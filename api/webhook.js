@@ -116,9 +116,8 @@ async function sendToSymbol(uid, msg) {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body,
-      // Node 18+/20+ なら AbortSignal.timeout が使える（VercelのNodeランタイムはOK）
-      //signal: AbortSignal.timeout(8000)
     });
+    console .log('📡 導通チェック fetch', res.status, res.statusText);
     text = await res.text();
     console .log('📡 導通チェック２' ,text);
   } catch (err) {
