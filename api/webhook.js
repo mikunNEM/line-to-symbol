@@ -111,7 +111,7 @@ async function sendToSymbol(uid, msg) {
   let res, text;
   try {
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 8000);
+    const timeout = setTimeout(() => controller.abort(), 15000);
 
     // ✅ ここで一重 JSON にする
     const announceBody = JSON.stringify({ payload: payloadHex });
