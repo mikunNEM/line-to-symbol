@@ -117,8 +117,8 @@ async function sendToSymbol(uid, msg) {
     const announceBody = JSON.stringify({ payload: payloadHex });
     console.log('📡 announce body head:', announceBody);
 
-    res = await fetch(`${NODE_URL}/transactions`, {
-      method: 'PUT',
+    res = await fetch(`https://relay.symbol-mikun.net/announce`, {
+      method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: announceBody,
       signal: controller.signal,
