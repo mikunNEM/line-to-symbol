@@ -118,7 +118,7 @@ async function sendToSymbol(uid, msg) {
     }, 8000);
 
     // ここで二重 stringify を避ける
-    const announceBody = `{ payload: payloadHex }`;
+    const announceBody = `{ payload: ${payloadHex} }`;
     console.log('📡 announce body head:', announceBody.slice(0, 120) + '...');
 
     res = await fetch(`${NODE_URL}/transactions`, {
