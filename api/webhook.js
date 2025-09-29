@@ -115,7 +115,7 @@ async function sendToSymbol(uid, msg) {
 
     // ✅ ここで一重 JSON にする
     const announceBody = JSON.stringify({ payload: payloadHex });
-    console.log('📡 announce body head:', announceBody.slice(0, 120) + '...');
+    console.log('📡 announce body head:', announceBody);
 
     res = await fetch(`${NODE_URL}/transactions`, {
       method: 'PUT',
