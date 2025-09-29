@@ -1,13 +1,11 @@
 {
-  "name": "line-to-symbol",
+  "name": "line-symbol-webhook",
   "version": "1.0.0",
   "type": "module",
-  "main": "index.js",
-  "scripts": {
-    "start": "node index.js"
-  },
+  "main": "api/webhook.js",
   "dependencies": {
-    "symbol-sdk": "3.3.0"
+    "express": "^4.19.2",
+    "body-parser": "^1.20.2",
+    "symbol-sdk": "^3.3.0"
   }
 }
-

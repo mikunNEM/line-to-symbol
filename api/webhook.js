@@ -1,6 +1,4 @@
 // api/webhook.js
-export const runtime = 'nodejs';
-
 import crypto from 'crypto';
 import { PrivateKey } from 'symbol-sdk';
 import { SymbolFacade, descriptors, models } from 'symbol-sdk/symbol';
@@ -18,6 +16,7 @@ const XYM_ID = NETWORK === 'mainnet'
 const FEE_MULTIPLIER = 100;
 const facade = new SymbolFacade(NETWORK);
 
+// --- 環境変数チェック ---
 function ensureEnv() {
   const missing = [];
   if (!NODE_URL)    missing.push('NODE_URL');
@@ -33,14 +32,11 @@ function explorerTxUrl(hash) {
     : `https://testnet.symbol.fyi/transactions/${hash}`;
 }
 
-async function getRawBody(req) {
-  const chunks = [];
-  for await (const c of req) chunks.push(Buffer.isBuffer(c) ? c : Buffer.from(c));
-  return Buffer.concat(chunks);
-}
+// --- LINE署名検証 ---
 const verifyLine = (raw, sig) =>
   !!sig && crypto.createHmac('sha256', LINE_SECRET).update(raw).digest('base64') === sig;
 
+// --- LINE返信 ---
 async function replyLine(replyToken, text) {
   try {
     await fetch('https://api.line.me/v2/bot/message/reply', {
@@ -53,6 +49,7 @@ async function replyLine(replyToken, text) {
   }
 }
 
+// --- SymbolにTX送信 ---
 async function sendToSymbol(uid, msg) {
   ensureEnv();
 
@@ -89,7 +86,7 @@ async function sendToSymbol(uid, msg) {
   const signature = signer.signTransaction(tx);
   let payloadHex = facade.transactionFactory.static.attachSignature(tx, signature);
 
-  // --- 必ず hex string に正規化 ---
+  // normalize hex string
   if (typeof payloadHex === 'object' && payloadHex.payload) {
     payloadHex = payloadHex.payload;
   }
@@ -106,30 +103,21 @@ async function sendToSymbol(uid, msg) {
   const hash = facade.hashTransaction(tx).toString();
   console.log('🔑 tx hash:', hash);
   console.log('📦 payload length:', payloadHex.length);
-  console.log('🌐 announce to:', `${NODE_URL}/transactions`);
+
+  const announceBody = JSON.stringify({ payload: payloadHex });
+  console.log('📡 announce body head:', announceBody.slice(0, 80));
 
   let res, text;
   try {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 15000);
 
-    // ✅ ここで一重 JSON にする
-    const announceBody = JSON.stringify({ payload: payloadHex });
-    console.log('📡 announce body head:', announceBody);
-
-
-try {
-  res = await fetch(`https://testnet1.symbol-mikun.net:3001/transactions`, {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    body: announceBody,
-    signal: controller.signal,
-  });
-  console.log('✅ fetch sent');
-} catch (err) {
-  console.error('❌ fetch error (before res):', err);
-}
-
+    res = await fetch(`${NODE_URL}/transactions`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: announceBody,
+      signal: controller.signal,
+    });
 
     clearTimeout(timeout);
 
@@ -155,7 +143,8 @@ try {
   return explorerTxUrl(hash);
 }
 
-export default async function handler(req, res) {
+// --- Express用ハンドラ ---
+export async function webhookHandler(req, res) {
   if (req.method !== 'POST') return res.status(200).send('ok');
 
   try {
@@ -165,15 +154,14 @@ export default async function handler(req, res) {
     return res.status(500).end('server env not ready');
   }
 
-  const raw = await getRawBody(req);
+  const raw = req.body; // express.raw() で Buffer が入る
   const sig = req.headers['x-line-signature'];
-  if (!verifyLine(raw, sig)) return res.status(403).end('forbidden');
+  if (!verifyLine(raw, sig)) {
+    console.error('❌ signature verification failed');
+    return res.status(403).end('forbidden');
+  }
 
-  try {
-    console.log('✅ LINE Webhook received, raw preview:', raw.toString('utf8').slice(0, 256));
-  } catch {}
-
-  res.status(200).end('ok');
+  res.status(200).end('ok'); // LINEに即レス
 
   try {
     const body = JSON.parse(raw.toString('utf8'));
@@ -197,4 +185,3 @@ export default async function handler(req, res) {
   }
 }
 
-export const config = { api: { bodyParser: false } };
