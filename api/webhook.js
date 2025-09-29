@@ -64,8 +64,9 @@ async function sendToSymbol(uid, msg) {
   });*/
 
   // UTF-8バイト配列に変換
-  const Message = Buffer.from(msg, "utf8");
+  const Message = Buffer.from(msg, "hex").toString("utf8");
 
+  console.log("Message =", Message);
 
   const typed = new descriptors.TransferTransactionV1Descriptor(
     myAddress,
