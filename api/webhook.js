@@ -56,15 +56,15 @@ async function sendToSymbol(uid, msg) {
   const signer = facade.createAccount(new PrivateKey(PRIVATE_KEY));
   const myAddress = facade.network.publicKeyToAddress(signer.publicKey);
 
-  const note = JSON.stringify({
+ /* const note = JSON.stringify({
     t: 'line',
     uid: String(uid).slice(0, 16),
-    msg: String(msg).slice(0, 160),
+    msg: String(msg).slice(0, 340),
     ts: new Date().toISOString()
-  });
+  });*/
 
   // UTF-8バイト配列に変換
-  const utf8Message = Buffer.from(note, "utf8");
+  //const utf8Message = Buffer.from(note, "utf8");
 
   const typed = new descriptors.TransferTransactionV1Descriptor(
     myAddress,
@@ -74,7 +74,7 @@ async function sendToSymbol(uid, msg) {
         new models.Amount(0n)
       )
     ],
-    utf8Message
+    msg
   );
 
   const deadline = 2 * 60 * 60;
