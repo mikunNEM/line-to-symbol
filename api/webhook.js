@@ -65,6 +65,8 @@ async function sendToSymbol(uid, msg) {
     ts: new Date().toISOString()
   });
 
+  msg = "\0" + msg;
+
   const typed = new descriptors.TransferTransactionV1Descriptor(
     myAddress,
     [
@@ -73,7 +75,7 @@ async function sendToSymbol(uid, msg) {
         new models.Amount(0n)
       )
     ],
-    note.msg
+    msg
   );
 
   const deadline = 2 * 60 * 60;
