@@ -1,20 +1,16 @@
 // api/webhook.js
-// LINE → (署名検証) → TX生成 → 署名 → ノードにannounce
-// Runtimeは必ず nodejs（Edgeだと3001ポートに出られない）
 export const runtime = 'nodejs';
 
 import crypto from 'crypto';
 import { PrivateKey } from 'symbol-sdk';
 import { SymbolFacade, descriptors, models } from 'symbol-sdk/symbol';
 
-// ===== env =====
 const NETWORK     = process.env.NETWORK_TYPE || 'testnet';
 const NODE_URL    = process.env.NODE_URL;
 const LINE_SECRET = process.env.LINE_CHANNEL_SECRET;
 const LINE_TOKEN  = process.env.LINE_ACCESS_TOKEN;
 const PRIVATE_KEY = process.env.SYMBOL_PRIVATE_KEY;
 
-// XYM mosaicId
 const XYM_ID = NETWORK === 'mainnet'
   ? 0x6BED913FA20223F8n
   : 0x72C0212E67A08BCEn;
@@ -37,7 +33,6 @@ function explorerTxUrl(hash) {
     : `https://testnet.symbol.fyi/transactions/${hash}`;
 }
 
-// --- raw body for LINE signature ---
 async function getRawBody(req) {
   const chunks = [];
   for await (const c of req) chunks.push(Buffer.isBuffer(c) ? c : Buffer.from(c));
@@ -46,7 +41,6 @@ async function getRawBody(req) {
 const verifyLine = (raw, sig) =>
   !!sig && crypto.createHmac('sha256', LINE_SECRET).update(raw).digest('base64') === sig;
 
-// --- LINE reply ---
 async function replyLine(replyToken, text) {
   try {
     await fetch('https://api.line.me/v2/bot/message/reply', {
@@ -59,7 +53,6 @@ async function replyLine(replyToken, text) {
   }
 }
 
-// --- 送信本体 ---
 async function sendToSymbol(uid, msg) {
   ensureEnv();
 
@@ -84,7 +77,7 @@ async function sendToSymbol(uid, msg) {
     note
   );
 
-  const deadline = 2 * 60 * 60; // 2時間
+  const deadline = 2 * 60 * 60;
   const tx = facade.createTransactionFromTypedDescriptor(
     typed,
     signer.publicKey,
@@ -93,16 +86,21 @@ async function sendToSymbol(uid, msg) {
   );
   console.log('📝 create tx v1, deadline(sec):', deadline);
 
-  // 署名→payload
   const signature = signer.signTransaction(tx);
-  let payloadHex  = facade.transactionFactory.static.attachSignature(tx, signature);
+  let payloadHex = facade.transactionFactory.static.attachSignature(tx, signature);
 
-  // --- 戻り値を必ず hex string に正規化 ---
+  // --- 必ず hex string に正規化 ---
   if (typeof payloadHex === 'object' && payloadHex.payload) {
     payloadHex = payloadHex.payload;
   }
-  if (typeof payloadHex !== 'string') {
-    throw new Error("attachSignature did not return hex string");
+  if (typeof payloadHex === 'string' && payloadHex.startsWith('{')) {
+    try {
+      const parsed = JSON.parse(payloadHex);
+      if (parsed.payload) payloadHex = parsed.payload;
+    } catch {}
+  }
+  if (typeof payloadHex !== 'string' || payloadHex.includes('{')) {
+    throw new Error("attachSignature did not return clean hex string");
   }
 
   const hash = facade.hashTransaction(tx).toString();
@@ -110,16 +108,12 @@ async function sendToSymbol(uid, msg) {
   console.log('📦 payload length:', payloadHex.length);
   console.log('🌐 announce to:', `${NODE_URL}/transactions`);
 
-  // announce
   let res, text;
   try {
     const controller = new AbortController();
-    const timeout = setTimeout(() => {
-      console.error('⏰ fetch timeout (8s)');
-      controller.abort();
-    }, 8000);
+    const timeout = setTimeout(() => controller.abort(), 8000);
 
-    // ✅ JSON.stringify で一重の JSON にする
+    // ✅ ここで一重 JSON にする
     const announceBody = JSON.stringify({ payload: payloadHex });
     console.log('📡 announce body head:', announceBody.slice(0, 120) + '...');
 
@@ -154,7 +148,6 @@ async function sendToSymbol(uid, msg) {
   return explorerTxUrl(hash);
 }
 
-// --- webhook handler ---
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(200).send('ok');
 
@@ -170,11 +163,10 @@ export default async function handler(req, res) {
   if (!verifyLine(raw, sig)) return res.status(403).end('forbidden');
 
   try {
-    const preview = raw.toString('utf8').slice(0, 256);
-    console.log('✅ LINE Webhook received, raw preview:', preview);
+    console.log('✅ LINE Webhook received, raw preview:', raw.toString('utf8').slice(0, 256));
   } catch {}
 
-  res.status(200).end('ok'); // ACK
+  res.status(200).end('ok');
 
   try {
     const body = JSON.parse(raw.toString('utf8'));
@@ -198,5 +190,4 @@ export default async function handler(req, res) {
   }
 }
 
-// bodyParser無効化
 export const config = { api: { bodyParser: false } };
