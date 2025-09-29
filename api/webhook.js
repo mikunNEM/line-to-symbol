@@ -1,14 +1,14 @@
 // api/webhook.js
 // LINE → (署名検証) → TX生成 → 署名 → ノードにannounce（8秒タイムアウト）
-// 失敗時は原因を Runtime Logs に必ず出す
+// 失敗時は必ず Runtime Logs に詳細を出す
 
 import crypto from 'crypto';
 import { PrivateKey } from 'symbol-sdk';
 import { SymbolFacade, descriptors, models } from 'symbol-sdk/symbol';
 
-// ===== env =====
+// ===== 環境変数 =====
 const NETWORK     = process.env.NETWORK_TYPE || 'testnet';          // 'testnet' | 'mainnet'
-const NODE_URL    = process.env.NODE_URL;                           // 例: https://symbol-test.opening-line.jp:3001
+const NODE_URL    = process.env.NODE_URL;                           // 例: http://testnet1.symbol-mikun.net:3001
 const LINE_SECRET = process.env.LINE_CHANNEL_SECRET;
 const LINE_TOKEN  = process.env.LINE_ACCESS_TOKEN;
 const PRIVATE_KEY = process.env.SYMBOL_PRIVATE_KEY;
@@ -45,7 +45,7 @@ async function getRawBody(req) {
 const verifyLine = (raw, sig) =>
   !!sig && crypto.createHmac('sha256', LINE_SECRET).update(raw).digest('base64') === sig;
 
-// --- LINE reply（失敗はログに出すが例外は投げない） ---
+// --- LINE reply（失敗はログに出すだけ） ---
 async function replyLine(replyToken, text) {
   try {
     await fetch('https://api.line.me/v2/bot/message/reply', {
@@ -58,7 +58,7 @@ async function replyLine(replyToken, text) {
   }
 }
 
-// --- 送信本体 ---
+// --- Symbolトランザクション送信 ---
 async function sendToSymbol(uid, msg) {
   ensureEnv();
 
@@ -66,7 +66,7 @@ async function sendToSymbol(uid, msg) {
   const signer    = facade.createAccount(new PrivateKey(PRIVATE_KEY));
   const myAddress = facade.network.publicKeyToAddress(signer.publicKey);
 
-  // メッセージ整形（過長防止）
+  // メッセージ整形
   const note = JSON.stringify({
     t: 'line',
     uid: String(uid).slice(0, 16),
@@ -74,7 +74,7 @@ async function sendToSymbol(uid, msg) {
     ts: new Date().toISOString()
   });
 
-  // typed descriptor（自分宛てに0XYM＋メッセージ）
+  // Transfer Tx
   const typed = new descriptors.TransferTransactionV1Descriptor(
     myAddress,
     [
@@ -86,96 +86,58 @@ async function sendToSymbol(uid, msg) {
     note
   );
 
-  // トランザクション生成
-  const deadline = 2 * 60 * 60; // 2時間有効
+  // 生成
+  const deadline = 2 * 60 * 60; // 2h
   const tx = facade.createTransactionFromTypedDescriptor(
     typed,
     signer.publicKey,
     FEE_MULTIPLIER,
     deadline
   );
-  console.log('📝 create tx v1, deadline(sec):', deadline);
 
-  // 署名→payload→hash
   const signature = signer.signTransaction(tx);
   let payloadHex  = facade.transactionFactory.static.attachSignature(tx, signature);
-
-  // attachSignature の戻り値を正規化
   if (typeof payloadHex === 'object' && payloadHex.payload) {
     payloadHex = payloadHex.payload;
-  } else if (typeof payloadHex === 'string' && payloadHex.startsWith('{')) {
-    try {
-      const parsed = JSON.parse(payloadHex);
-      if (parsed.payload) payloadHex = parsed.payload;
-    } catch (e) {
-      console.error('❌ payload JSON.parse failed:', e);
-    }
   }
 
   const hash = facade.hashTransaction(tx).toString();
 
+  console.log('📝 create tx v1, deadline(sec):', deadline);
   console.log('🔑 tx hash:', hash);
-  console.log('📦 payload final type:', typeof payloadHex, 'len:', payloadHex?.length);
-  console.log('📦 payload head (hex):', payloadHex);
+  console.log('📦 payload length:', payloadHex?.length);
   console.log('🌐 announce to:', `${NODE_URL}/transactions`);
 
-  // announce（8秒タイムアウト & 詳細ログ）
+  // announce
   let res, text;
   try {
-    console.log('📡 fetch start...');
     const controller = new AbortController();
     const timeout = setTimeout(() => {
       console.error('⏰ fetch timeout (8s)');
       controller.abort();
     }, 8000);
 
-    // ✅ application/json + JSON.stringify({ payload })
     const announceBody = JSON.stringify({ payload: payloadHex });
-    console.log('📡 announce body (JSON head):', announceBody.slice(0, 120) + '...');
+    console.log('📡 announce body head:', announceBody.slice(0, 120) + '...');
 
+    res = await fetch(`${NODE_URL}/transactions`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: announceBody,
+      signal: controller.signal,
+    });
 
-// announce 部分
-
-const res = await fetch("https://relay.symbol-mikun.net/announce", {
-  method: "POST",
-  headers: { "Content-Type": "application/json" },
-  body: JSON.stringify({ payload: payloadHex }),
-  signal: controller.signal,
-});
-
-clearTimeout(timeout);
-
-if (!res.ok) throw new Error(`relay announce failed: ${res.status}`);
-const text = await res.text();
-console.log("relay response:", text);
-
-
-    console.log('📡 fetch done. res.status:', res.status, res.statusText);
-
-    try {
-      text = await res.text();
-      console.log('📡 raw response text:', text);
-    } catch (e) {
-      console.error('❌ res.text() failed:', e);
-    }
-
+    clearTimeout(timeout);
+    text = await res.text();
+    console.log('📡 node status:', res.status, res.statusText);
+    console.log('📡 node body  :', text);
   } catch (err) {
     console.error('🌩 announce fetch error:', err);
     throw new Error(`fetch-failed: ${err.message || String(err)}`);
   }
 
-  if (!res.ok) {
-    throw new Error(`announce failed: ${res.status} ${text}`);
-  }
-
-  try {
-    const parsed = JSON.parse(text);
-    if (!/pushed/i.test(parsed.message || '')) {
-      throw new Error(`announce failed: ${parsed.message}`);
-    }
-  } catch (e) {
-    throw new Error(`announce parse failed: ${e.message || text}`);
-  }
+  if (!res.ok) throw new Error(`announce failed: ${res.status} ${text}`);
+  if (!/pushed/i.test(text)) throw new Error(`announce response unexpected: ${text}`);
 
   return explorerTxUrl(hash);
 }
@@ -191,18 +153,15 @@ export default async function handler(req, res) {
     return res.status(500).end('server env not ready');
   }
 
-  // 署名検証用に raw を先に取得
   const raw = await getRawBody(req);
   const sig = req.headers['x-line-signature'];
   if (!verifyLine(raw, sig)) return res.status(403).end('forbidden');
 
-  // 受信ログ（previewだけ）
   try {
     const preview = raw.toString('utf8').slice(0, 256);
     console.log('✅ LINE Webhook received, raw preview:', preview);
   } catch {}
 
-  // 先にACK（LINEの3秒制限対策）
   res.status(200).end('ok');
 
   try {
@@ -227,5 +186,8 @@ export default async function handler(req, res) {
   }
 }
 
-// Vercel/Next.js で raw 受け取る設定（冪等）
-export const config = { api: { bodyParser: false } };
+// Vercel を Node.js ランタイムで実行（Edge禁止）
+export const config = {
+  runtime: 'nodejs',
+  api: { bodyParser: false }
+};
