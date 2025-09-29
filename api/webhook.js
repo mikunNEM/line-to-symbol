@@ -117,12 +117,19 @@ async function sendToSymbol(uid, msg) {
     const announceBody = JSON.stringify({ payload: payloadHex });
     console.log('📡 announce body head:', announceBody);
 
-    res = await fetch(`https://relay.symbol-mikun.net/announce`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: announceBody,
-      signal: controller.signal,
-    });
+try {
+  console.log('🌐 fetch target:', `https://relay.symbol-mikun.net/announce`);
+  res = await fetch(`https://relay.symbol-mikun.net/announce`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: announceBody,
+    signal: controller.signal,
+  });
+  console.log('✅ fetch sent');
+} catch (err) {
+  console.error('❌ fetch error (before res):', err);
+}
+
 
     clearTimeout(timeout);
 
