@@ -53,17 +53,15 @@ async function replyLine(replyToken, text) {
 async function sendToSymbol(uid, msg) {
   ensureEnv();
 
-  console.log('56📝 msg = :', msg);
-
   const signer = facade.createAccount(new PrivateKey(PRIVATE_KEY));
   const myAddress = facade.network.publicKeyToAddress(signer.publicKey);
 
-  const note = JSON.stringify({
+  /*const note = JSON.stringify({
     t: 'line',
     uid: String(uid).slice(0, 16),
     msg: String(msg).slice(0, 340),
     ts: new Date().toISOString()
-  });
+  });*/
 
   msg = "\0" + msg;
 
