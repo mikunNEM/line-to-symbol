@@ -63,8 +63,8 @@ async function sendToSymbol(uid, msg) {
     ts: new Date().toISOString()
   });
 
-  // UTF-8 → HEX に変換
-  const hexMessage = Buffer.from(note, "utf8").toString("hex");
+  // UTF-8バイト配列に変換
+  const utf8Message = Buffer.from(note, "utf8");
 
   const typed = new descriptors.TransferTransactionV1Descriptor(
     myAddress,
@@ -74,7 +74,7 @@ async function sendToSymbol(uid, msg) {
         new models.Amount(0n)
       )
     ],
-    hexMessage
+    utf8Message
   );
 
   const deadline = 2 * 60 * 60;
