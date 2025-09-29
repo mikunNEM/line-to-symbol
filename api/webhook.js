@@ -1,7 +1,4 @@
 // api/webhook.js
-// LINE → (署名検証) → TX生成 → 署名 → ノードにannounce
-// Runtimeは必ず nodejs（Edgeだと3001ポートに出られない）
-
 export const runtime = 'nodejs';
 
 import crypto from 'crypto';
@@ -9,16 +6,16 @@ import { PrivateKey } from 'symbol-sdk';
 import { SymbolFacade, descriptors, models } from 'symbol-sdk/symbol';
 
 // ===== env =====
-const NETWORK     = process.env.NETWORK_TYPE || 'testnet';          // 'testnet' | 'mainnet'
-const NODE_URL    = process.env.NODE_URL;                           // 例: https://symbol-test.opening-line.jp:3001
+const NETWORK     = process.env.NETWORK_TYPE || 'testnet';
+const NODE_URL    = process.env.NODE_URL;
 const LINE_SECRET = process.env.LINE_CHANNEL_SECRET;
 const LINE_TOKEN  = process.env.LINE_ACCESS_TOKEN;
 const PRIVATE_KEY = process.env.SYMBOL_PRIVATE_KEY;
 
 // XYM mosaicId
 const XYM_ID = NETWORK === 'mainnet'
-  ? 0x6BED913FA20223F8n   // mainnet
-  : 0x72C0212E67A08BCEn;  // testnet
+  ? 0x6BED913FA20223F8n
+  : 0x72C0212E67A08BCEn;
 
 const FEE_MULTIPLIER = 100;
 const facade = new SymbolFacade(NETWORK);
@@ -98,10 +95,12 @@ async function sendToSymbol(uid, msg) {
   const signature = signer.signTransaction(tx);
   let payloadHex  = facade.transactionFactory.static.attachSignature(tx, signature);
 
-  // payloadHex を必ず string の hex に正規化
-  if (typeof payloadHex === 'object') {
-    if (payloadHex.payload) payloadHex = payloadHex.payload;
-    else throw new Error("attachSignature returned unexpected object");
+  // attachSignature の戻り値を正規化（必ず hex string にする）
+  if (typeof payloadHex === 'object' && payloadHex.payload) {
+    payloadHex = payloadHex.payload;
+  }
+  if (typeof payloadHex !== 'string') {
+    throw new Error("attachSignature did not return hex string");
   }
 
   const hash = facade.hashTransaction(tx).toString();
@@ -118,6 +117,7 @@ async function sendToSymbol(uid, msg) {
       controller.abort();
     }, 8000);
 
+    // ここで二重 stringify を避ける
     const announceBody = JSON.stringify({ payload: payloadHex });
     console.log('📡 announce body head:', announceBody.slice(0, 120) + '...');
 
@@ -172,7 +172,7 @@ export default async function handler(req, res) {
     console.log('✅ LINE Webhook received, raw preview:', preview);
   } catch {}
 
-  res.status(200).end('ok'); // ACK
+  res.status(200).end('ok');
 
   try {
     const body = JSON.parse(raw.toString('utf8'));
@@ -196,5 +196,5 @@ export default async function handler(req, res) {
   }
 }
 
-// Vercel/Next.js の bodyParser 無効化（raw取得用）
+// bodyParser無効化
 export const config = { api: { bodyParser: false } };
