@@ -1,14 +1,16 @@
 // api/webhook.js
-// LINE → (署名検証) → TX生成 → 署名 → ノードにannounce（8秒タイムアウト）
-// 失敗時は必ず Runtime Logs に詳細を出す
+// LINE → (署名検証) → TX生成 → 署名 → ノードにannounce
+// Runtimeは必ず nodejs（Edgeだと3001ポートに出られない）
+
+export const runtime = 'nodejs';
 
 import crypto from 'crypto';
 import { PrivateKey } from 'symbol-sdk';
 import { SymbolFacade, descriptors, models } from 'symbol-sdk/symbol';
 
-// ===== 環境変数 =====
+// ===== env =====
 const NETWORK     = process.env.NETWORK_TYPE || 'testnet';          // 'testnet' | 'mainnet'
-const NODE_URL    = process.env.NODE_URL;                           // 例: http://testnet1.symbol-mikun.net:3001
+const NODE_URL    = process.env.NODE_URL;                           // 例: https://symbol-test.opening-line.jp:3001
 const LINE_SECRET = process.env.LINE_CHANNEL_SECRET;
 const LINE_TOKEN  = process.env.LINE_ACCESS_TOKEN;
 const PRIVATE_KEY = process.env.SYMBOL_PRIVATE_KEY;
@@ -45,7 +47,7 @@ async function getRawBody(req) {
 const verifyLine = (raw, sig) =>
   !!sig && crypto.createHmac('sha256', LINE_SECRET).update(raw).digest('base64') === sig;
 
-// --- LINE reply（失敗はログに出すだけ） ---
+// --- LINE reply ---
 async function replyLine(replyToken, text) {
   try {
     await fetch('https://api.line.me/v2/bot/message/reply', {
@@ -58,15 +60,13 @@ async function replyLine(replyToken, text) {
   }
 }
 
-// --- Symbolトランザクション送信 ---
+// --- 送信本体 ---
 async function sendToSymbol(uid, msg) {
   ensureEnv();
 
-  // 署名者
   const signer    = facade.createAccount(new PrivateKey(PRIVATE_KEY));
   const myAddress = facade.network.publicKeyToAddress(signer.publicKey);
 
-  // メッセージ整形
   const note = JSON.stringify({
     t: 'line',
     uid: String(uid).slice(0, 16),
@@ -74,7 +74,6 @@ async function sendToSymbol(uid, msg) {
     ts: new Date().toISOString()
   });
 
-  // Transfer Tx
   const typed = new descriptors.TransferTransactionV1Descriptor(
     myAddress,
     [
@@ -86,26 +85,28 @@ async function sendToSymbol(uid, msg) {
     note
   );
 
-  // 生成
-  const deadline = 2 * 60 * 60; // 2h
+  const deadline = 2 * 60 * 60; // 2時間
   const tx = facade.createTransactionFromTypedDescriptor(
     typed,
     signer.publicKey,
     FEE_MULTIPLIER,
     deadline
   );
+  console.log('📝 create tx v1, deadline(sec):', deadline);
 
+  // 署名→payload
   const signature = signer.signTransaction(tx);
   let payloadHex  = facade.transactionFactory.static.attachSignature(tx, signature);
-  if (typeof payloadHex === 'object' && payloadHex.payload) {
-    payloadHex = payloadHex.payload;
+
+  // payloadHex を必ず string の hex に正規化
+  if (typeof payloadHex === 'object') {
+    if (payloadHex.payload) payloadHex = payloadHex.payload;
+    else throw new Error("attachSignature returned unexpected object");
   }
 
   const hash = facade.hashTransaction(tx).toString();
-
-  console.log('📝 create tx v1, deadline(sec):', deadline);
   console.log('🔑 tx hash:', hash);
-  console.log('📦 payload length:', payloadHex?.length);
+  console.log('📦 payload length:', payloadHex.length);
   console.log('🌐 announce to:', `${NODE_URL}/transactions`);
 
   // announce
@@ -128,16 +129,25 @@ async function sendToSymbol(uid, msg) {
     });
 
     clearTimeout(timeout);
+
     text = await res.text();
-    console.log('📡 node status:', res.status, res.statusText);
-    console.log('📡 node body  :', text);
+    console.log('📡 res.status:', res.status, res.statusText);
+    console.log('📡 res.body  :', text);
   } catch (err) {
     console.error('🌩 announce fetch error:', err);
     throw new Error(`fetch-failed: ${err.message || String(err)}`);
   }
 
   if (!res.ok) throw new Error(`announce failed: ${res.status} ${text}`);
-  if (!/pushed/i.test(text)) throw new Error(`announce response unexpected: ${text}`);
+
+  try {
+    const parsed = JSON.parse(text);
+    if (!/pushed/i.test(parsed.message || '')) {
+      throw new Error(`announce failed: ${parsed.message}`);
+    }
+  } catch (e) {
+    throw new Error(`announce parse failed: ${e.message || text}`);
+  }
 
   return explorerTxUrl(hash);
 }
@@ -162,7 +172,7 @@ export default async function handler(req, res) {
     console.log('✅ LINE Webhook received, raw preview:', preview);
   } catch {}
 
-  res.status(200).end('ok');
+  res.status(200).end('ok'); // ACK
 
   try {
     const body = JSON.parse(raw.toString('utf8'));
@@ -186,8 +196,5 @@ export default async function handler(req, res) {
   }
 }
 
-// Vercel を Node.js ランタイムで実行（Edge禁止）
-export const config = {
-  runtime: 'nodejs',
-  api: { bodyParser: false }
-};
+// Vercel/Next.js の bodyParser 無効化（raw取得用）
+export const config = { api: { bodyParser: false } };
