@@ -1,4 +1,6 @@
 // api/webhook.js
+// LINE → (署名検証) → TX生成 → 署名 → ノードにannounce
+// Runtimeは必ず nodejs（Edgeだと3001ポートに出られない）
 export const runtime = 'nodejs';
 
 import crypto from 'crypto';
@@ -95,7 +97,7 @@ async function sendToSymbol(uid, msg) {
   const signature = signer.signTransaction(tx);
   let payloadHex  = facade.transactionFactory.static.attachSignature(tx, signature);
 
-  // attachSignature の戻り値を正規化（必ず hex string にする）
+  // --- 戻り値を必ず hex string に正規化 ---
   if (typeof payloadHex === 'object' && payloadHex.payload) {
     payloadHex = payloadHex.payload;
   }
@@ -117,9 +119,9 @@ async function sendToSymbol(uid, msg) {
       controller.abort();
     }, 8000);
 
-    // ここで二重 stringify を避ける
-    const announceBody = payloadHex;
-    console.log('📡 announce body head:', announceBody);
+    // ✅ JSON.stringify で一重の JSON にする
+    const announceBody = JSON.stringify({ payload: payloadHex });
+    console.log('📡 announce body head:', announceBody.slice(0, 120) + '...');
 
     res = await fetch(`${NODE_URL}/transactions`, {
       method: 'PUT',
@@ -172,7 +174,7 @@ export default async function handler(req, res) {
     console.log('✅ LINE Webhook received, raw preview:', preview);
   } catch {}
 
-  res.status(200).end('ok');
+  res.status(200).end('ok'); // ACK
 
   try {
     const body = JSON.parse(raw.toString('utf8'));
