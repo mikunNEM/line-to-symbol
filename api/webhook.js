@@ -117,24 +117,10 @@ async function sendToSymbol(uid, msg) {
     const announceBody = JSON.stringify({ payload: payloadHex });
     console.log('📡 announce body head:', announceBody);
 
-try {
-  const ping = await fetch('https://relay.symbol-mikun.net/announce', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ payload: "DEADBEEF" })
-  });
-  console.log('🚀 relay ping status:', ping.status);
-  console.log('🚀 relay ping body:', await ping.text());
-} catch (e) {
-  console.error('🚨 relay ping failed:', e);
-}
-
-
 
 try {
-  console.log('🌐 fetch target:', `https://relay.symbol-mikun.net/announce`);
-  res = await fetch(`https://relay.symbol-mikun.net/announce`, {
-    method: 'POST',
+  res = await fetch(`https://testnet1.symbol-mikun.net:3001/transactions`, {
+    method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: announceBody,
     signal: controller.signal,
