@@ -3,10 +3,10 @@ import crypto from 'crypto';
 import { PrivateKey } from 'symbol-sdk';
 import { SymbolFacade, descriptors, models } from 'symbol-sdk/symbol';
 
-const NETWORK     = process.env.NETWORK_TYPE || 'testnet';
-const NODE_URL    = process.env.NODE_URL;
+const NETWORK = process.env.NETWORK_TYPE || 'testnet';
+const NODE_URL = process.env.NODE_URL;
 const LINE_SECRET = process.env.LINE_CHANNEL_SECRET;
-const LINE_TOKEN  = process.env.LINE_ACCESS_TOKEN;
+const LINE_TOKEN = process.env.LINE_ACCESS_TOKEN;
 const PRIVATE_KEY = process.env.SYMBOL_PRIVATE_KEY;
 
 const XYM_ID = NETWORK === 'mainnet'
@@ -19,9 +19,9 @@ const facade = new SymbolFacade(NETWORK);
 // --- 環境変数チェック ---
 function ensureEnv() {
   const missing = [];
-  if (!NODE_URL)    missing.push('NODE_URL');
+  if (!NODE_URL) missing.push('NODE_URL');
   if (!LINE_SECRET) missing.push('LINE_CHANNEL_SECRET');
-  if (!LINE_TOKEN)  missing.push('LINE_ACCESS_TOKEN');
+  if (!LINE_TOKEN) missing.push('LINE_ACCESS_TOKEN');
   if (!PRIVATE_KEY) missing.push('SYMBOL_PRIVATE_KEY');
   if (missing.length) throw new Error(`Missing env: ${missing.join(', ')}`);
 }
@@ -53,7 +53,7 @@ async function replyLine(replyToken, text) {
 async function sendToSymbol(uid, msg) {
   ensureEnv();
 
-  const signer    = facade.createAccount(new PrivateKey(PRIVATE_KEY));
+  const signer = facade.createAccount(new PrivateKey(PRIVATE_KEY));
   const myAddress = facade.network.publicKeyToAddress(signer.publicKey);
 
   const note = JSON.stringify({
@@ -63,6 +63,9 @@ async function sendToSymbol(uid, msg) {
     ts: new Date().toISOString()
   });
 
+  // UTF-8 → HEX に変換
+  const hexMessage = Buffer.from(note, "utf8").toString("hex");
+
   const typed = new descriptors.TransferTransactionV1Descriptor(
     myAddress,
     [
@@ -71,7 +74,7 @@ async function sendToSymbol(uid, msg) {
         new models.Amount(0n)
       )
     ],
-    note
+    hexMessage
   );
 
   const deadline = 2 * 60 * 60;
@@ -94,7 +97,7 @@ async function sendToSymbol(uid, msg) {
     try {
       const parsed = JSON.parse(payloadHex);
       if (parsed.payload) payloadHex = parsed.payload;
-    } catch {}
+    } catch { }
   }
   if (typeof payloadHex !== 'string' || payloadHex.includes('{')) {
     throw new Error("attachSignature did not return clean hex string");
@@ -110,7 +113,7 @@ async function sendToSymbol(uid, msg) {
   let res, text;
   try {
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 15000);
+    const timeout = setTimeout(() => controller.abort(), 8000);
 
     res = await fetch(`${NODE_URL}/transactions`, {
       method: 'PUT',
