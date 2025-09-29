@@ -64,7 +64,8 @@ async function sendToSymbol(uid, msg) {
   });*/
 
   // UTF-8バイト配列に変換
-  //const utf8Message = Buffer.from(note, "utf8");
+  const Message = Buffer.from(msg, "utf8");
+
 
   const typed = new descriptors.TransferTransactionV1Descriptor(
     myAddress,
@@ -74,7 +75,7 @@ async function sendToSymbol(uid, msg) {
         new models.Amount(0n)
       )
     ],
-    msg
+    Message
   );
 
   const deadline = 2 * 60 * 60;
