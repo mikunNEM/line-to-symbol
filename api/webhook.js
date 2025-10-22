@@ -189,11 +189,12 @@ export async function webhookHandler(req, res) {
         let text = ev.message.text.trim();
         console.log('✉️  user:', userId, 'msg:', text);
 
-        // ✅ 「note:」で始まるメッセージのみブロックチェーンに記録
-        if (text.toLowerCase().startsWith('note:')) {
-          text = text.slice(5).trim();
+        // ✅ 「note:」または「📝」で始まるメッセージだけブロックチェーンに記録
+        if (text.toLowerCase().startsWith('note:') || text.startsWith('📝')) {
+          // 「note:」または「📝」を削除
+          text = text.replace(/^note:/i, '').replace(/^📝/, '').trim();
           if (!text) {
-            console.log('⚠️ note: の後にメッセージがありません。スキップします。');
+            console.log('⚠️ note/📝 の後にメッセージがありません。スキップします。');
             continue;
           }
 
@@ -208,8 +209,8 @@ export async function webhookHandler(req, res) {
             );
           }
         } else {
-          // note: 以外のメッセージはスルー（返信なし）
-          console.log('💤 非noteメッセージを無視しました。');
+          // note: / 📝 以外のメッセージはスルー
+          console.log('💤 非note/📝メッセージを無視しました。');
         }
       }
     }
