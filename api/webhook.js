@@ -189,28 +189,12 @@ export async function webhookHandler(req, res) {
         let text = ev.message.text.trim();
         console.log('✉️  user:', userId, 'msg:', text);
 
-        // ✅ 「note:」または「📝」で始まるメッセージだけブロックチェーンに記録
-        if (text.toLowerCase().startsWith('note:') || text.startsWith('📝')) {
-          // 「note:」または「📝」を削除
-          text = text.replace(/^note:/i, '').replace(/^📝/, '').trim();
-          if (!text) {
-            console.log('⚠️ note/📝 の後にメッセージがありません。スキップします。');
-            continue;
-          }
-
-          try {
-            const url = await sendToSymbol(userId, text);
-            await replyLine(ev.replyToken, `📝 ブロックチェーンに記録しました\n${url}`);
-          } catch (e) {
-            console.error('TX error:', e);
-            await replyLine(
-              ev.replyToken,
-              `⚠️ 送信に失敗: ${String(e.message || e).slice(0, 160)}`
-            );
-          }
-        } else {
-          // note: / 📝 以外のメッセージはスルー
-          console.log('💤 非note/📝メッセージを無視しました。');
+        try {
+          const url = await sendToSymbol(userId, text);
+          await replyLine(ev.replyToken, `📝 ブロックチェーンに記録しました\n${url}`);
+        } catch (e) {
+          console.error('TX error:', e);
+          await replyLine(ev.replyToken, `⚠️ 送信に失敗: ${String(e.message || e).slice(0, 160)}`);
         }
       }
     }
@@ -218,3 +202,4 @@ export async function webhookHandler(req, res) {
     console.error('parse error:', e);
   }
 }
+
