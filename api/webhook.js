@@ -1,14 +1,20 @@
-// api/webhook.js
+// ===============================================
+// LINE → Symbol ブロックチェーン記録用 Webhook
+// version: 2025-10 (note: で始まるメッセージのみ記録)
+// ===============================================
+
 import crypto from 'crypto';
 import { PrivateKey } from 'symbol-sdk';
 import { SymbolFacade, descriptors, models } from 'symbol-sdk/symbol';
 
+// --- 環境変数の読み込み ---
 const NETWORK = process.env.NETWORK_TYPE || 'testnet';
 const NODE_URL = process.env.NODE_URL;
 const LINE_SECRET = process.env.LINE_CHANNEL_SECRET;
 const LINE_TOKEN = process.env.LINE_ACCESS_TOKEN;
 const PRIVATE_KEY = process.env.SYMBOL_PRIVATE_KEY;
 
+// XYMモザイクID（メインネット／テストネットで切替）
 const XYM_ID = NETWORK === 'mainnet'
   ? 0x6BED913FA20223F8n
   : 0x72C0212E67A08BCEn;
@@ -16,7 +22,11 @@ const XYM_ID = NETWORK === 'mainnet'
 const FEE_MULTIPLIER = 100;
 const facade = new SymbolFacade(NETWORK);
 
-// --- 環境変数チェック ---
+// ==================================================
+// 共通ユーティリティ
+// ==================================================
+
+// --- 必要な環境変数が揃っているか確認 ---
 function ensureEnv() {
   const missing = [];
   if (!NODE_URL) missing.push('NODE_URL');
@@ -26,44 +36,47 @@ function ensureEnv() {
   if (missing.length) throw new Error(`Missing env: ${missing.join(', ')}`);
 }
 
+// --- Explorer のトランザクションURLを生成 ---
 function explorerTxUrl(hash) {
   return NETWORK === 'mainnet'
     ? `https://symbol.fyi/transactions/${hash}`
     : `https://testnet.symbol.fyi/transactions/${hash}`;
 }
 
-// --- LINE署名検証 ---
+// --- LINE署名の検証 ---
 const verifyLine = (raw, sig) =>
   !!sig && crypto.createHmac('sha256', LINE_SECRET).update(raw).digest('base64') === sig;
 
-// --- LINE返信 ---
+// --- LINEへの返信 ---
 async function replyLine(replyToken, text) {
   try {
     await fetch('https://api.line.me/v2/bot/message/reply', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${LINE_TOKEN}` },
-      body: JSON.stringify({ replyToken, messages: [{ type: 'text', text }] })
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${LINE_TOKEN}`
+      },
+      body: JSON.stringify({
+        replyToken,
+        messages: [{ type: 'text', text }]
+      })
     });
   } catch (e) {
     console.error('LINE reply error:', e);
   }
 }
 
-// --- SymbolにTX送信 ---
+// ==================================================
+// Symbol トランザクション送信ロジック
+// ==================================================
 async function sendToSymbol(uid, msg) {
   ensureEnv();
 
   const signer = facade.createAccount(new PrivateKey(PRIVATE_KEY));
   const myAddress = facade.network.publicKeyToAddress(signer.publicKey);
 
-  /*const note = JSON.stringify({
-    t: 'line',
-    uid: String(uid).slice(0, 16),
-    msg: String(msg).slice(0, 340),
-    ts: new Date().toISOString()
-  });*/
-
-  msg = "\0" + msg;
+  // note: メッセージ本体を送信
+  msg = "\0" + msg; // UTF-8 BOM対策（先頭にnull文字）
 
   const typed = new descriptors.TransferTransactionV1Descriptor(
     myAddress,
@@ -76,22 +89,21 @@ async function sendToSymbol(uid, msg) {
     msg
   );
 
-  const deadline = 2 * 60 * 60;
+  const deadline = 2 * 60 * 60; // 2時間
   const tx = facade.createTransactionFromTypedDescriptor(
     typed,
     signer.publicKey,
     FEE_MULTIPLIER,
     deadline
   );
+
   console.log('📝 create tx v1, deadline(sec):', deadline);
 
   const signature = signer.signTransaction(tx);
   let payloadHex = facade.transactionFactory.static.attachSignature(tx, signature);
 
-  // normalize hex string
-  if (typeof payloadHex === 'object' && payloadHex.payload) {
-    payloadHex = payloadHex.payload;
-  }
+  // 正常なhex文字列を確保
+  if (typeof payloadHex === 'object' && payloadHex.payload) payloadHex = payloadHex.payload;
   if (typeof payloadHex === 'string' && payloadHex.startsWith('{')) {
     try {
       const parsed = JSON.parse(payloadHex);
@@ -109,6 +121,7 @@ async function sendToSymbol(uid, msg) {
   const announceBody = JSON.stringify({ payload: payloadHex });
   console.log('📡 announce body head:', announceBody.slice(0, 80));
 
+  // ノードに送信
   let res, text;
   try {
     const controller = new AbortController();
@@ -122,8 +135,8 @@ async function sendToSymbol(uid, msg) {
     });
 
     clearTimeout(timeout);
-
     text = await res.text();
+
     console.log('📡 res.status:', res.status, res.statusText);
     console.log('📡 res.body  :', text);
   } catch (err) {
@@ -145,7 +158,9 @@ async function sendToSymbol(uid, msg) {
   return explorerTxUrl(hash);
 }
 
-// --- Express用ハンドラ ---
+// ==================================================
+// Webhook メインハンドラ
+// ==================================================
 export async function webhookHandler(req, res) {
   if (req.method !== 'POST') return res.status(200).send('ok');
 
@@ -163,22 +178,38 @@ export async function webhookHandler(req, res) {
     return res.status(403).end('forbidden');
   }
 
-  res.status(200).end('ok'); // LINEに即レス
+  // LINEサーバーにすぐレスポンスを返す
+  res.status(200).end('ok');
 
   try {
     const body = JSON.parse(raw.toString('utf8'));
     for (const ev of body?.events || []) {
       if (ev.type === 'message' && ev.message?.type === 'text') {
         const userId = ev.source?.userId || 'unknown';
-        const text = ev.message.text;
+        let text = ev.message.text.trim();
         console.log('✉️  user:', userId, 'msg:', text);
 
-        try {
-          const url = await sendToSymbol(userId, text);
-          await replyLine(ev.replyToken, `📝 ブロックチェーンに記録しました\n${url}`);
-        } catch (e) {
-          console.error('TX error:', e);
-          await replyLine(ev.replyToken, `⚠️ 送信に失敗: ${String(e.message || e).slice(0, 160)}`);
+        // ✅ 「note:」で始まるメッセージのみブロックチェーンに記録
+        if (text.toLowerCase().startsWith('note:')) {
+          text = text.slice(5).trim();
+          if (!text) {
+            console.log('⚠️ note: の後にメッセージがありません。スキップします。');
+            continue;
+          }
+
+          try {
+            const url = await sendToSymbol(userId, text);
+            await replyLine(ev.replyToken, `📝 ブロックチェーンに記録しました\n${url}`);
+          } catch (e) {
+            console.error('TX error:', e);
+            await replyLine(
+              ev.replyToken,
+              `⚠️ 送信に失敗: ${String(e.message || e).slice(0, 160)}`
+            );
+          }
+        } else {
+          // note: 以外のメッセージはスルー（返信なし）
+          console.log('💤 非noteメッセージを無視しました。');
         }
       }
     }
@@ -186,4 +217,3 @@ export async function webhookHandler(req, res) {
     console.error('parse error:', e);
   }
 }
-
