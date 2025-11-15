@@ -4,12 +4,13 @@ import { PrivateKey } from "symbol-sdk";
 import { SymbolFacade, descriptors, models } from "symbol-sdk/symbol";
 
 const app = express();
-app.use(express.json({ verify: rawBodySaver }));
-
-// 生ボディ保持（署名検証用）
-function rawBodySaver(req, res, buf, encoding) {
-  req.rawBody = buf;
-}
+app.use(
+  express.json({
+    verify: (req, res, buf) => {
+      req.rawBody = buf; // 必ず Buffer のまま保存
+    }
+  })
+);
 
 // ---- ENV ----
 const {
@@ -46,17 +47,25 @@ function verifyLineSignature(rawBody, signature) {
 
 // ---- Send Reply to LINE ----
 async function replyLine(token, message) {
-  await fetch("https://api.line.me/v2/bot/message/reply", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${LINE_ACCESS_TOKEN}`
-    },
-    body: JSON.stringify({
-      replyToken: token,
-      messages: [{ type: "text", text: message }]
-    })
-  });
+  try {
+    const res = await fetch("https://api.line.me/v2/bot/message/reply", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${LINE_ACCESS_TOKEN}`
+      },
+      body: JSON.stringify({
+        replyToken: token,
+        messages: [{ type: "text", text: message }]
+      })
+    });
+
+    if (!res.ok) {
+      console.error("LINE reply error:", await res.text());
+    }
+  } catch (err) {
+    console.error("LINE reply catch:", err);
+  }
 }
 
 // ---- Send to Symbol ----
@@ -82,14 +91,13 @@ async function sendToSymbol(userId, msg) {
     descriptor,
     keyPair.publicKey,
     FEE_MULTIPLIER,
-    2 * 60 * 60 // 2時間
+    7200 // deadline（2時間）簡易版
   );
 
   const signature = facade.signTransaction(keyPair, tx);
-  const payload = facade.transactionFactory.static.attachSignature(
-    tx,
-    signature
-  ).payload;
+  let payload = facade.transactionFactory.static.attachSignature(tx, signature);
+
+  if (typeof payload === "object") payload = payload.payload;
 
   const hash = facade.hashTransaction(tx).toString();
 
@@ -111,7 +119,9 @@ async function sendToSymbol(userId, msg) {
 app.post("/webhook", async (req, res) => {
   const signature = req.headers["x-line-signature"];
 
-  if (!verifyLineSignature(req.rawBody, signature)) {
+  const raw = req.rawBody || Buffer.from(JSON.stringify(req.body));
+
+  if (!verifyLineSignature(raw, signature)) {
     return res.status(403).send("invalid signature");
   }
 
@@ -136,13 +146,16 @@ app.post("/webhook", async (req, res) => {
 
         text = text.replace(/^📝/, "").replace(/^note:/i, "").trim();
         if (!text) {
-          await replyLine(replyToken, "📝 の後に内容を入力してね。");
+          await replyLine(replyToken, "📝 の後に内容を書いてね。");
           continue;
         }
 
         try {
           const url = await sendToSymbol(ev.source.userId, text);
-          await replyLine(replyToken, `📝 ブロックチェーンに記録しました\n${url}`);
+          await replyLine(
+            replyToken,
+            `📝 ブロックチェーンに記録しました\n${url}`
+          );
         } catch (err) {
           await replyLine(replyToken, `⚠️エラー: ${err.message}`);
         }
