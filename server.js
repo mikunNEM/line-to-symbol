@@ -5,7 +5,7 @@ import { SymbolFacade, descriptors, models } from "symbol-sdk/symbol";
 
 const app = express();
 
-// ---- 生のリクエストボディを保持（LINE署名検証用） ----
+// LINE署名検証に必要：生の body を保持
 app.use(
   express.json({
     verify: (req, res, buf) => {
@@ -39,16 +39,16 @@ const explorerTxUrl = (hash) =>
 
 // ---- LINE Verify ----
 function verifyLineSignature(rawBody, signature) {
+  const body = Buffer.isBuffer(rawBody) ? rawBody : Buffer.from(rawBody);
   const calc = crypto
     .createHmac("sha256", LINE_CHANNEL_SECRET)
-    .update(rawBody)
+    .update(body)
     .digest("base64");
-
   return calc === signature;
 }
 
-// ---- LINE Reply ----
-async function replyLine(replyToken, message) {
+// ---- Send Reply to LINE ----
+async function replyLine(token, message) {
   try {
     const res = await fetch("https://api.line.me/v2/bot/message/reply", {
       method: "POST",
@@ -57,14 +57,12 @@ async function replyLine(replyToken, message) {
         Authorization: `Bearer ${LINE_ACCESS_TOKEN}`
       },
       body: JSON.stringify({
-        replyToken,
+        replyToken: token,
         messages: [{ type: "text", text: message }]
       })
     });
 
-    if (!res.ok) {
-      console.error("LINE reply error:", await res.text());
-    }
+    if (!res.ok) console.error("LINE reply error:", await res.text());
   } catch (err) {
     console.error("LINE reply catch:", err);
   }
@@ -76,10 +74,9 @@ async function sendToSymbol(userId, msg) {
   const keyPair = new facade.static.KeyPair(pk);
   const myAddress = facade.network.publicKeyToAddress(keyPair.publicKey);
 
-  // メッセージは先頭NULL付き
+  // メッセージ先頭に NULL を入れる（Symbol 互換）
   msg = "\0" + msg;
 
-  // ---- トランザクション記述子 ----
   const descriptor = new descriptors.TransferTransactionV1Descriptor(
     myAddress,
     [
@@ -91,25 +88,24 @@ async function sendToSymbol(userId, msg) {
     msg
   );
 
-  // ---- tx 作成 ----
   const tx = facade.createTransactionFromTypedDescriptor(
     descriptor,
     keyPair.publicKey,
     FEE_MULTIPLIER,
-    2 * 60 * 60 // deadline 2 hours
+    2 * 60 * 60 // deadline（2時間）
   );
 
-  // ---- 署名 ----
-  const signature = facade.signTransaction(keyPair, tx);
+  // ★ v3 正しい署名手順
+  const sig = facade.signTransaction(keyPair, tx);
 
-  // ---- payload 作成（正しい方法）----
-  const signedTx = facade.transactionFactory.static.attachSignature(tx, signature);
+  // ★ attachSignature は「JSON文字列」を返す
+  const jsonPayload = facade.transactionFactory.static.attachSignature(tx, sig);
 
-  // ---- Announce ----
+  // ★ ノードは JSON 文字列をそのまま body として受け取る！
   const res = await fetch(`${NODE_URL}/transactions`, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ payload: signedTx.payload })
+    body: jsonPayload
   });
 
   const json = await res.json();
@@ -117,22 +113,22 @@ async function sendToSymbol(userId, msg) {
     throw new Error("Announce failed: " + json.message);
   }
 
-  // ---- ハッシュ計算 ----
+  // ★ hash は facade.hashTransaction から取る
   const hash = facade.hashTransaction(tx).toString();
+
   return explorerTxUrl(hash);
 }
 
 // ---- Webhook ----
 app.post("/webhook", async (req, res) => {
   const signature = req.headers["x-line-signature"];
-  const raw = req.rawBody || Buffer.from(JSON.stringify(req.body));
+  const raw = req.rawBody;
 
   if (!verifyLineSignature(raw, signature)) {
     return res.status(403).send("invalid signature");
   }
 
-  // LINE へは即レス
-  res.status(200).send("ok");
+  res.status(200).send("ok"); // 先にレスポンス返す
 
   // バックグラウンド処理
   (async () => {
@@ -146,15 +142,12 @@ app.post("/webhook", async (req, res) => {
         const replyToken = ev.replyToken;
         let text = ev.message.text.trim();
 
-        // note判定
         const isNote =
           text.startsWith("📝") || text.toLowerCase().startsWith("note:");
 
         if (!isNote) continue;
 
-        // 先頭の「📝」「note:」を除去
         text = text.replace(/^📝/, "").replace(/^note:/i, "").trim();
-
         if (!text) {
           await replyLine(replyToken, "📝 の後に内容を書いてね。");
           continue;
@@ -162,7 +155,10 @@ app.post("/webhook", async (req, res) => {
 
         try {
           const url = await sendToSymbol(ev.source.userId, text);
-          await replyLine(replyToken, `📝 ブロックチェーンに記録しました\n${url}`);
+          await replyLine(
+            replyToken,
+            `📝 ブロックチェーンに記録しました\n${url}`
+          );
         } catch (err) {
           await replyLine(replyToken, `⚠️エラー: ${err.message}`);
         }
