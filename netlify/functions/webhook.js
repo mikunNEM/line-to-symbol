@@ -1,6 +1,8 @@
 // netlify/functions/webhook.js
 import crypto from 'crypto';
-import { SymbolFacade, PrivateKey, descriptors, models } from 'symbol-sdk/symbol';
+import { PrivateKey } from 'symbol-sdk';
+import { SymbolFacade, descriptors, models } from 'symbol-sdk/symbol';
+
 
 const NETWORK = process.env.NETWORK_TYPE || 'testnet';
 const NODE_URL = process.env.NODE_URL;
