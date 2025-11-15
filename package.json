@@ -2,9 +2,9 @@
   "name": "line-to-symbol",
   "version": "1.0.0",
   "type": "module",
-  "main": "server.mjs",
+  "main": "server.js",
   "scripts": {
-    "start": "node server.mjs"
+    "start": "node server.js"
   },
   "dependencies": {
     "symbol-sdk": "^3.3.0"
