@@ -1,0 +1,9 @@
+{
+  "name": "line-to-symbol",
+  "version": "1.0.0",
+  "type": "module",
+  "dependencies": {
+    "symbol-sdk": "^3.3.0",
+    "raw-body": "^2.5.2"
+  }
+}
