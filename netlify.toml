@@ -10,5 +10,6 @@
   methods = ["POST"]
 
 [functions]
-node_bundler = "esbuild"
-external_node_modules = ["symbol-sdk"]
+  node_bundler = "esbuild"
+  external_node_modules = ["symbol-sdk"]
+  node_version = "18"
