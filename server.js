@@ -5,7 +5,7 @@ import { SymbolFacade, descriptors, models } from "symbol-sdk/symbol";
 
 const app = express();
 
-// LINE署名検証に必要：生の body を保持
+// LINE署名検証：生 body を保持
 app.use(
   express.json({
     verify: (req, res, buf) => {
@@ -29,6 +29,7 @@ const XYM_ID =
     : 0x72C0212E67A08BCEn;
 
 const FEE_MULTIPLIER = 100;
+
 const facade = new SymbolFacade(NETWORK_TYPE);
 
 // ---- Explorer URL ----
@@ -49,7 +50,7 @@ function verifyLineSignature(rawBody, signature) {
   return calc === signature;
 }
 
-// ---- Send Reply to LINE ----
+// ---- LINE Reply ----
 async function replyLine(token, message) {
   try {
     const res = await fetch("https://api.line.me/v2/bot/message/reply", {
@@ -72,15 +73,20 @@ async function replyLine(token, message) {
   }
 }
 
-// ---- Send to Symbol ----
+// ---- Send to Symbol（メッセージ修正版）----
 async function sendToSymbol(userId, msg) {
   const pk = new PrivateKey(SYMBOL_PRIVATE_KEY);
   const keyPair = new facade.static.KeyPair(pk);
   const myAddress = facade.network.publicKeyToAddress(keyPair.publicKey);
 
-  // メッセージ先頭に NULL を入れる（Symbol 互換）
-  msg = "\0" + msg;
+  // ---- Symbol v3 正式メッセージ形式 ----
+  // 平文メッセージ（先頭 0x00）
+  const plainMessage = "\0" + msg;
 
+  // UTF-8 → Uint8Array（v3仕様）
+  const messageBytes = new TextEncoder().encode(plainMessage);
+
+  // ---- Descriptor 作成 ----
   const descriptor = new descriptors.TransferTransactionV1Descriptor(
     myAddress,
     [
@@ -89,7 +95,7 @@ async function sendToSymbol(userId, msg) {
         new models.Amount(0n)
       )
     ],
-    msg
+    messageBytes // ★ 修正済み：バイナリを渡す
   );
 
   const tx = facade.createTransactionFromTypedDescriptor(
@@ -99,14 +105,14 @@ async function sendToSymbol(userId, msg) {
     2 * 60 * 60 // deadline（2時間）
   );
 
-  // v3 正しい署名手順
+  // ---- 署名 ----
   const sig = facade.signTransaction(keyPair, tx);
 
-  // attachSignature は「JSON文字列」を返す
+  // attachSignature は JSON文字列を返す
   const jsonPayload =
     facade.transactionFactory.static.attachSignature(tx, sig);
 
-  // ノードは JSON 文字列をそのまま body として受け取る！
+  // ---- アナウンス ----
   const res = await fetch(`${NODE_URL}/transactions`, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
@@ -118,9 +124,8 @@ async function sendToSymbol(userId, msg) {
     throw new Error("Announce failed: " + json.message);
   }
 
-  // hash は facade.hashTransaction から取る
+  // ---- ハッシュ取得 ----
   const hash = facade.hashTransaction(tx).toString();
-
   return explorerTxUrl(hash);
 }
 
