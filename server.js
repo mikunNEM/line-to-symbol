@@ -1,7 +1,7 @@
 import express from "express";
 import crypto from "crypto";
-import { PrivateKey } from "symbol-sdk";
-import { SymbolFacade, descriptors, models, Address } from "symbol-sdk/symbol";
+import { PrivateKey, Address } from "symbol-sdk";
+import { SymbolFacade, descriptors, models } from "symbol-sdk/symbol";
 
 const app = express();
 
