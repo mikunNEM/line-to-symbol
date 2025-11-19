@@ -20,9 +20,11 @@ const {
   NODE_URL,
   LINE_CHANNEL_SECRET,
   LINE_ACCESS_TOKEN,
-  SYMBOL_PRIVATE_KEY
+  SYMBOL_PRIVATE_KEY,
+  SYMBOL_TO_ADDRESS            // ★送信先アドレス
 } = process.env;
 
+// ---- XYM Mosaic ID ----
 const XYM_ID =
   NETWORK_TYPE === "mainnet"
     ? 0x6BED913FA20223F8n
@@ -30,7 +32,17 @@ const XYM_ID =
 
 const FEE_MULTIPLIER = 100;
 
+// ---- Symbol facade ----
 const facade = new SymbolFacade(NETWORK_TYPE);
+
+// ---- 送信先アドレス（ENVから読み込み）----
+let recipientAddress = null;
+try {
+  recipientAddress = facade.network.stringToAddress(SYMBOL_TO_ADDRESS);
+} catch (e) {
+  console.error("❌ ERROR: SYMBOL_TO_ADDRESS が不正です:", SYMBOL_TO_ADDRESS);
+  throw e;
+}
 
 // ---- Explorer URL ----
 const explorerTxUrl = (hash) =>
@@ -73,42 +85,36 @@ async function replyLine(token, message) {
   }
 }
 
-// ---- Send to Symbol（メッセージ修正版）----
+// ---- Send to Symbol ----
 async function sendToSymbol(userId, msg) {
   const pk = new PrivateKey(SYMBOL_PRIVATE_KEY);
   const keyPair = new facade.static.KeyPair(pk);
-  const myAddress = facade.network.publicKeyToAddress(keyPair.publicKey);
 
-  // ---- Symbol v3 正式メッセージ形式 ----
-  // 平文メッセージ（先頭 0x00）
+  // ---- 平文メッセージ（0x00 プレフィックス）----
   const plainMessage = "\0" + msg;
-
-  // UTF-8 → Uint8Array（v3仕様）
   const messageBytes = new TextEncoder().encode(plainMessage);
 
-  // ---- Descriptor 作成 ----
+  // ---- Transfer TX ----
   const descriptor = new descriptors.TransferTransactionV1Descriptor(
-    myAddress,
+    recipientAddress,   // ★ENV から取得したアドレスに送る
     [
       new descriptors.UnresolvedMosaicDescriptor(
         new models.UnresolvedMosaicId(XYM_ID),
         new models.Amount(0n)
       )
     ],
-    messageBytes // ★ 修正済み：バイナリを渡す
+    messageBytes
   );
 
   const tx = facade.createTransactionFromTypedDescriptor(
     descriptor,
     keyPair.publicKey,
     FEE_MULTIPLIER,
-    2 * 60 * 60 // deadline（2時間）
+    2 * 60 * 60 // 2 hours
   );
 
   // ---- 署名 ----
   const sig = facade.signTransaction(keyPair, tx);
-
-  // attachSignature は JSON文字列を返す
   const jsonPayload =
     facade.transactionFactory.static.attachSignature(tx, sig);
 
@@ -124,7 +130,6 @@ async function sendToSymbol(userId, msg) {
     throw new Error("Announce failed: " + json.message);
   }
 
-  // ---- ハッシュ取得 ----
   const hash = facade.hashTransaction(tx).toString();
   return explorerTxUrl(hash);
 }
@@ -140,7 +145,7 @@ app.post("/webhook", async (req, res) => {
 
   res.status(200).send("ok"); // 先にレスポンス返す
 
-  // バックグラウンド処理
+  // 非同期バックグラウンド処理
   (async () => {
     try {
       const events = req.body.events || [];
