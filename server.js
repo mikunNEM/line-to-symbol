@@ -1,7 +1,7 @@
 import express from "express";
 import crypto from "crypto";
 import { PrivateKey } from "symbol-sdk";
-import { SymbolFacade, descriptors, models, Address } from "symbol-sdk/symbol";
+import { SymbolFacade, descriptors, models } from "symbol-sdk/symbol";
 
 const app = express();
 
@@ -34,20 +34,6 @@ const FEE_MULTIPLIER = 100;
 
 // ---- Symbol facade ----
 const facade = new SymbolFacade(NETWORK_TYPE);
-
-if (!SYMBOL_TO_ADDRESS) {
-  console.error("❌ ERROR: SYMBOL_TO_ADDRESS が設定されていません");
-  process.exit(1);
-}
-
-// ---- 送信先アドレス（ENVから読み込み）----
-let recipientAddress;
-try {
-  recipientAddress = Address.createFromRawAddress(SYMBOL_TO_ADDRESS);
-} catch (e) {
-  console.error("❌ ERROR: SYMBOL_TO_ADDRESS が不正です:", SYMBOL_TO_ADDRESS);
-  throw e;
-}
 
 // ---- Explorer URL ----
 const explorerTxUrl = (hash) =>
@@ -101,7 +87,7 @@ async function sendToSymbol(userId, msg) {
 
   // ---- Transfer TX ----
   const descriptor = new descriptors.TransferTransactionV1Descriptor(
-    recipientAddress,   // ★ENV から取得したアドレスに送る
+    new Address(SYMBOL_TO_ADDRESS),   // ★ENV から取得したアドレスに送る
     [
       new descriptors.UnresolvedMosaicDescriptor(
         new models.UnresolvedMosaicId(XYM_ID),
