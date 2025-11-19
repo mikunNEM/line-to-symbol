@@ -35,10 +35,15 @@ const FEE_MULTIPLIER = 100;
 // ---- Symbol facade ----
 const facade = new SymbolFacade(NETWORK_TYPE);
 
+if (!SYMBOL_TO_ADDRESS) {
+  console.error("❌ ERROR: SYMBOL_TO_ADDRESS が設定されていません");
+  process.exit(1);
+}
+
 // ---- 送信先アドレス（ENVから読み込み）----
-let recipientAddress = null;
+let recipientAddress;
 try {
-  recipientAddress = facade.network.stringToAddress(SYMBOL_TO_ADDRESS);
+  recipientAddress = Address.createFromRawAddress(SYMBOL_TO_ADDRESS);
 } catch (e) {
   console.error("❌ ERROR: SYMBOL_TO_ADDRESS が不正です:", SYMBOL_TO_ADDRESS);
   throw e;
