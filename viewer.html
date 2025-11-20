@@ -81,9 +81,10 @@
 <script>
 /* ===== 設定 ===== */
 const NODES = [
-  "https://testnet1.symbol-mikun.net:3001",
-  "https://sym-test-01.opening-line.jp:3001"
+  "wss://testnet1.symbol-mikun.net:3001/ws",
+  "wss://sym-test-01.opening-line.jp:3001/ws"
 ];
+
 
 const ADDRESS = "___PLACEHOLDER___";
 
@@ -208,8 +209,8 @@ async function loadHistory() {
    WebSocket 永続接続
    ============================================================ */
 async function connectWS() {
-  const NODE = NODES[Math.floor(Math.random() * NODES.length)];
-  const WSURL = NODE.replace("http", "ws") + "/ws";
+  const WSURL = NODES[Math.floor(Math.random() * NODES.length)];
+  //const WSURL = NODE.replace("http", "ws") + "/ws";
 
   ws = new WebSocket(WSURL);
 
