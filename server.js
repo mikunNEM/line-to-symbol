@@ -182,9 +182,6 @@ app.post("/webhook", async (req, res) => {
 });
 
 // ---- viewer.html にアドレスを渡す ----
-import path from "path";
-const __dirname = path.resolve();
-
 app.get("/viewer", (req, res) => {
   const html = fs.readFileSync("./viewer.html", "utf8")
     .replace("___PLACEHOLDER___", process.env.SYMBOL_TO_ADDRESS);
