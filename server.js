@@ -5,6 +5,10 @@ import { SymbolFacade, descriptors, models } from "symbol-sdk/symbol";
 
 const app = express();
 
+import path from "path";
+const __dirname = path.resolve();
+app.use(express.static(__dirname));
+
 // LINE署名検証：生 body を保持
 app.use(
   express.json({
