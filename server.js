@@ -181,11 +181,9 @@ app.post("/webhook", async (req, res) => {
   })();
 });
 
-// ---- Start Server ----
-const PORT = process.env.PORT || 10000;
-app.listen(PORT, () => console.log("Server running on", PORT));
 
-// viewerにアドレスを渡す
+//   viewer　/////////////////////////////////////////////////////////////////////////////////////////////
+
 app.get("/viewer", (req, res) => {
   res.send(`
 <!DOCTYPE html>
@@ -477,3 +475,7 @@ addCallback("block", block =>
   `);
 });
 
+
+// ---- Start Server ----
+const PORT = process.env.PORT || 10000;
+app.listen(PORT, () => console.log("Server running on", PORT));
