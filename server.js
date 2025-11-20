@@ -2,13 +2,8 @@ import express from "express";
 import crypto from "crypto";
 import { PrivateKey } from "symbol-sdk";
 import { SymbolFacade, descriptors, models } from "symbol-sdk/symbol";
-import fs from "fs";
 
 const app = express();
-
-import path from "path";
-const __dirname = path.resolve();
-app.use(express.static(__dirname));
 
 // LINE署名検証：生 body を保持
 app.use(
@@ -181,15 +176,6 @@ app.post("/webhook", async (req, res) => {
     }
   })();
 });
-
-// ---- viewer.html にアドレスを渡す ----
-app.get("/viewer", (req, res) => {
-  const html = fs.readFileSync("./viewer.html", "utf8")
-    .replace("___PLACEHOLDER___", process.env.SYMBOL_TO_ADDRESS);
-
-  res.send(html);
-});
-
 
 // ---- Start Server ----
 const PORT = process.env.PORT || 10000;
