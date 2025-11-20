@@ -184,3 +184,18 @@ app.post("/webhook", async (req, res) => {
 // ---- Start Server ----
 const PORT = process.env.PORT || 10000;
 app.listen(PORT, () => console.log("Server running on", PORT));
+
+// viewerにアドレスを渡す
+app.get("/view", (req, res) => {
+  res.send(`
+    <html>
+      <body>
+        <script>
+          const SYMBOL_TO_ADDRESS = "${process.env.SYMBOL_TO_ADDRESS}";
+          console.log("address:", SYMBOL_TO_ADDRESS);
+        </script>
+      </body>
+    </html>
+  `);
+});
+
